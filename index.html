@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171522">
+  <title>El gatito — Tres en raya</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Trebuchet MS", Arial, sans-serif;
+      color: #f4effa;
+      background: #171522;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #171522;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    #loginView {
+      width: min(100%, 420px);
+      text-align: center;
+    }
+
+    #gameView {
+      width: min(100%, 480px);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      color: #e3c7ff;
+      font-size: clamp(2.2rem, 8vw, 3.4rem);
+    }
+
+    .intro {
+      margin: 8px 0 22px;
+      color: #b7afc5;
+      font-size: 1.05rem;
+    }
+
+    .panel {
+      padding: 24px;
+      border: 1px solid #484057;
+      border-radius: 28px;
+      background: #242130;
+      box-shadow: 0 14px 36px #08070d66;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 22px;
+    }
+
+    button, input { font: inherit; }
+
+    .tab, .submit {
+      padding: 12px 16px;
+      border: 0;
+      border-radius: 999px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .tab { background: #383246; }
+    .tab[aria-pressed="true"] { background: #7652a1; }
+    .submit { width: 100%; margin-top: 8px; background: #7652a1; }
+    .tab:hover, .submit:hover { background: #8b67b8; }
+
+    .field {
+      display: block;
+      margin: 0 0 16px;
+      color: #e3c7ff;
+      font-weight: bold;
+      text-align: left;
+    }
+
+    input {
+      width: 100%;
+      margin-top: 7px;
+      padding: 12px 14px;
+      border: 1px solid #625a70;
+      border-radius: 12px;
+      background: #171522;
+      color: #f4effa;
+    }
+
+    input:focus-visible, button:focus-visible {
+      outline: 3px solid #d8b8ff;
+      outline-offset: 3px;
+    }
+
+    .message {
+      min-height: 1.5em;
+      margin: 16px 0 0;
+      color: #f4effa;
+    }
+
+    .message.error { color: #ff9eaa; }
+    .message.success { color: #a6e0b6; }
+
+    .note {
+      margin: 18px 0 0;
+      color: #b7afc5;
+      font-size: .88rem;
+      line-height: 1.5;
+    }
+
+    .user-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      color: #b7afc5;
+      text-align: left;
+    }
+
+    .user-bar strong { color: #e3c7ff; }
+    .user-bar .action { padding: 9px 16px; font-size: .9rem; }
+
+    .game-message {
+      min-height: 1.6em;
+      margin: 0 0 18px;
+      color: #efeffa;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: min(100%, 330px);
+      margin: 0 auto;
+      padding: 10px;
+      border-radius: 22px;
+      background: #383246;
+    }
+
+    .cell {
+      display: grid;
+      aspect-ratio: 1;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 15px;
+      background: #f2edf7;
+      color: #75578e;
+      font: inherit;
+      font-size: clamp(3rem, 17vw, 5.3rem);
+      font-weight: bold;
+      line-height: 1;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease;
+    }
+
+    .cell:not(:disabled):hover {
+      transform: scale(1.04);
+      background: #ffffff;
+    }
+
+    .cell:disabled { cursor: default; }
+    .cell.x { color: #bf4564; }
+    .cell.o { color: #50a071; }
+    .cell.winner { background: #c7e8b5; }
+    .cell:focus-visible, button:focus-visible { outline: 3px solid #d8b8ff; outline-offset: 3px; }
+
+    .scoreboard {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .badge {
+      min-width: 100px;
+      padding: 10px 14px;
+      border: 1px solid #484057;
+      border-radius: 16px;
+      background: #302b3d;
+      font-weight: bold;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .action {
+      padding: 12px 20px;
+      border: 0;
+      border-radius: 999px;
+      background: #7652a1;
+      color: white;
+      font: inherit;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #4d356d;
+      transition: transform .12s ease, background .12s ease;
+    }
+
+    .action:hover { background: #8b67b8; transform: translateY(-2px); }
+    .action:active { transform: translateY(2px); box-shadow: 0 2px 0 #4d356d; }
+
+    .hint {
+      margin: 16px 0 0;
+      color: #b7afc5;
+      font-size: .95rem;
+    }
+
+    @media (max-width: 420px) {
+      body { padding: 16px; }
+      .panel { padding: 18px 12px; }
+      #loginView .panel { padding: 20px 16px; }
+      .board { gap: 7px; padding: 7px; }
+      .scoreboard { gap: 6px; }
+      .badge { min-width: 0; padding: 9px 10px; font-size: .92rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="view" id="loginView">
+    <h1>El gatito &infin;</h1>
+    <p class="intro">Inicia sesión o crea una cuenta para jugar.</p>
+
+    <section class="panel" aria-label="Acceso al juego">
+      <div class="tabs" role="group" aria-label="Tipo de acceso">
+        <button class="tab" id="loginTab" type="button" aria-pressed="true">Iniciar sesión</button>
+        <button class="tab" id="registerTab" type="button" aria-pressed="false">Crear usuario</button>
+      </div>
+
+      <form id="accountForm">
+        <label class="field" for="username">Usuario
+          <input id="username" name="username" type="text" minlength="3" maxlength="20"
+                 pattern="[A-Za-z0-9_]+" autocomplete="username" required>
+        </label>
+        <label class="field" for="password">Contraseña
+          <input id="password" name="password" type="password" minlength="8"
+                 autocomplete="current-password" required>
+        </label>
+        <button class="submit" id="submitButton" type="submit">Entrar y jugar</button>
+      </form>
+      <p class="message" id="accountMessage" role="status" aria-live="polite"></p>
+    </section>
+
+    <p class="note">Las cuentas se guardan únicamente en este navegador. No uses una contraseña que tengas en otros servicios.</p>
+  </main>
+
+  <main class="view" id="gameView">
+    <div class="user-bar">
+      <span>Sesión de <strong id="activeUser"></strong></span>
+      <button class="action" id="logout" type="button">Cerrar sesión</button>
+    </div>
+    <h1>El gatito &infin;</h1>
+    <p class="intro">Tres en raya con memoria: cada jugador puede tener hasta tres fichas.</p>
+
+    <section class="panel" aria-label="Partida de tres en raya">
+      <p class="game-message" id="message" aria-live="polite">Turno de X</p>
+      <div class="board" id="board" role="grid" aria-label="Tablero de tres en raya">
+        <button class="cell" type="button" role="gridcell" data-cell="0" aria-label="Fila 1, columna 1, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="1" aria-label="Fila 1, columna 2, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="2" aria-label="Fila 1, columna 3, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="3" aria-label="Fila 2, columna 1, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="4" aria-label="Fila 2, columna 2, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="5" aria-label="Fila 2, columna 3, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="6" aria-label="Fila 3, columna 1, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="7" aria-label="Fila 3, columna 2, vacía"></button>
+        <button class="cell" type="button" role="gridcell" data-cell="8" aria-label="Fila 3, columna 3, vacía"></button>
+      </div>
+
+      <div class="scoreboard" aria-label="Marcador">
+        <div class="badge">X gana: <span id="scoreX">0</span></div>
+        <div class="badge">O gana: <span id="scoreO">0</span></div>
+      </div>
+
+      <div class="actions">
+        <button class="action" id="newRound" type="button">Nueva ronda</button>
+        <button class="action" id="resetScore" type="button">Reiniciar marcador</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const loginView = document.querySelector("#loginView");
+    const gameView = document.querySelector("#gameView");
+
+    function showLoginView() {
+      gameView.classList.remove("active");
+      loginView.classList.add("active");
+    }
+
+    function showGameView(username) {
+      document.querySelector("#activeUser").textContent = username;
+      loginView.classList.remove("active");
+      gameView.classList.add("active");
+    }
+
+    (() => {
+    const storageKey = "tilscale.users.v1";
+    const activeUserKey = "tilscale.activeUser";
+    const form = document.querySelector("#accountForm");
+    const usernameInput = document.querySelector("#username");
+    const passwordInput = document.querySelector("#password");
+    const accountMessage = document.querySelector("#accountMessage");
+    const loginTab = document.querySelector("#loginTab");
+    const registerTab = document.querySelector("#registerTab");
+    const submitButton = document.querySelector("#submitButton");
+    let mode = "login";
+
+    try {
+      const activeUser = sessionStorage.getItem(activeUserKey);
+      if (activeUser) showGameView(activeUser);
+      else showLoginView();
+    } catch {
+      showLoginView();
+      showAccountMessage("No se pudo acceder al almacenamiento del navegador.", true);
+    }
+
+    function showAccountMessage(text, isError = false, isSuccess = false) {
+      accountMessage.textContent = text;
+      accountMessage.classList.toggle("error", isError);
+      accountMessage.classList.toggle("success", isSuccess);
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      const isLogin = mode === "login";
+      loginTab.setAttribute("aria-pressed", String(isLogin));
+      registerTab.setAttribute("aria-pressed", String(!isLogin));
+      submitButton.textContent = isLogin ? "Entrar y jugar" : "Crear cuenta y jugar";
+      passwordInput.autocomplete = isLogin ? "current-password" : "new-password";
+      showAccountMessage("");
+    }
+
+    function readUsers() {
+      const storedUsers = localStorage.getItem(storageKey);
+      if (!storedUsers) return [];
+
+      const users = JSON.parse(storedUsers);
+      if (!Array.isArray(users) || users.some((user) =>
+        typeof user.username !== "string" ||
+        typeof user.salt !== "string" ||
+        typeof user.passwordHash !== "string"
+      )) {
+        throw new Error("Los datos de usuario guardados no tienen un formato válido.");
+      }
+      return users;
+    }
+
+    function toHex(bytes) {
+      return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function hashPassword(password, salt) {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(password),
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+      );
+      const hash = await crypto.subtle.deriveBits(
+        { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
+        key,
+        256
+      );
+      return toHex(hash);
+    }
+
+    async function enterGame(username) {
+      try {
+        sessionStorage.setItem(activeUserKey, username);
+        showGameView(username);
+      } catch {
+        showAccountMessage("No se pudo iniciar la sesión. Revisa los permisos de almacenamiento.", true);
+      }
+    }
+
+    loginTab.addEventListener("click", () => setMode("login"));
+    registerTab.addEventListener("click", () => setMode("register"));
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showAccountMessage("");
+      submitButton.disabled = true;
+
+      try {
+        if (!crypto.subtle) {
+          throw new Error("El navegador no permite proteger contraseñas en esta página. Ábrela desde localhost o una conexión segura.");
+        }
+
+        const username = usernameInput.value.trim();
+        const normalizedUsername = username.toLowerCase();
+        const password = passwordInput.value;
+        const users = readUsers();
+
+        if (mode === "register") {
+          if (users.some((user) => user.username.toLowerCase() === normalizedUsername)) {
+            showAccountMessage("Ese nombre de usuario ya está registrado.", true);
+            return;
+          }
+
+          const salt = crypto.getRandomValues(new Uint8Array(16));
+          const passwordHash = await hashPassword(password, salt);
+          users.push({ username, salt: toHex(salt), passwordHash });
+          localStorage.setItem(storageKey, JSON.stringify(users));
+          await enterGame(username);
+          return;
+        }
+
+        const user = users.find((entry) => entry.username.toLowerCase() === normalizedUsername);
+        if (!user) {
+          showAccountMessage("Usuario o contraseña incorrectos.", true);
+          return;
+        }
+
+        if (!/^[a-f\d]{32}$/i.test(user.salt) || !/^[a-f\d]{64}$/i.test(user.passwordHash)) {
+          throw new Error("Los datos de usuario guardados no tienen un formato válido.");
+        }
+        const salt = Uint8Array.from(user.salt.match(/.{2}/g), (byte) => parseInt(byte, 16));
+        const passwordHash = await hashPassword(password, salt);
+        if (passwordHash !== user.passwordHash) {
+          showAccountMessage("Usuario o contraseña incorrectos.", true);
+          return;
+        }
+        await enterGame(user.username);
+      } catch (error) {
+        showAccountMessage(error instanceof Error
+          ? error.message
+          : "Ocurrió un error al acceder a la cuenta.", true);
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+    })();
+
+    (() => {
+    document.querySelector("#logout").addEventListener("click", () => {
+      sessionStorage.removeItem("tilscale.activeUser");
+      showLoginView();
+    });
+
+    const cells = Array.from(document.querySelectorAll(".cell"));
+    const message = document.querySelector("#message");
+    const scoreXDisplay = document.querySelector("#scoreX");
+    const scoreODisplay = document.querySelector("#scoreO");
+    const winningLines = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+
+    let board = Array(9).fill("");
+    let movesByPlayer = { X: [], O: [] };
+    let currentPlayer = "X";
+    let roundOver = false;
+    let scoreX = 0;
+    let scoreO = 0;
+
+    function updateScore() {
+      scoreXDisplay.textContent = scoreX;
+      scoreODisplay.textContent = scoreO;
+    }
+
+    function finishRound(winner, line) {
+      roundOver = true;
+      cells.forEach((cell) => { cell.disabled = true; });
+
+      line.forEach((index) => cells[index].classList.add("winner"));
+      if (winner === "X") scoreX += 1;
+      else scoreO += 1;
+      message.textContent = `¡Ganó ${winner}!`;
+
+      updateScore();
+    }
+
+    function play(index) {
+      if (roundOver || board[index]) return;
+
+      const playerMoves = movesByPlayer[currentPlayer];
+      let oldestMoveRemoved = false;
+      if (playerMoves.length === 3) {
+        const oldestIndex = playerMoves.shift();
+        board[oldestIndex] = "";
+        cells[oldestIndex].textContent = "";
+        cells[oldestIndex].classList.remove("x", "o", "winner");
+        cells[oldestIndex].disabled = false;
+        cells[oldestIndex].setAttribute(
+          "aria-label",
+          `Fila ${Math.floor(oldestIndex / 3) + 1}, columna ${oldestIndex % 3 + 1}, vacía`
+        );
+        oldestMoveRemoved = true;
+      }
+
+      board[index] = currentPlayer;
+      playerMoves.push(index);
+      const cell = cells[index];
+      cell.textContent = currentPlayer;
+      cell.classList.add(currentPlayer.toLowerCase());
+      cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, ${currentPlayer}`);
+      cell.disabled = true;
+
+      const winningLine = winningLines.find((line) => line.every((position) => board[position] === currentPlayer));
+      if (winningLine) {
+        finishRound(currentPlayer, winningLine);
+      } else {
+        currentPlayer = currentPlayer === "X" ? "O" : "X";
+        message.textContent = oldestMoveRemoved
+          ? `${currentPlayer === "X" ? "O" : "X"} colocó su cuarta ficha: desapareció la más antigua. Turno de ${currentPlayer}.`
+          : `Turno de ${currentPlayer}`;
+      }
+    }
+
+    function startNewRound() {
+      board = Array(9).fill("");
+      movesByPlayer = { X: [], O: [] };
+      currentPlayer = "X";
+      roundOver = false;
+      message.textContent = "Turno de X";
+      cells.forEach((cell, index) => {
+        cell.textContent = "";
+        cell.disabled = false;
+        cell.classList.remove("x", "o", "winner");
+        cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, vacía`);
+      });
+    }
+
+    cells.forEach((cell, index) => {
+      cell.addEventListener("click", () => play(index));
+    });
+
+    document.querySelector("#newRound").addEventListener("click", startNewRound);
+    document.querySelector("#resetScore").addEventListener("click", () => {
+      scoreX = 0;
+      scoreO = 0;
+      updateScore();
+      startNewRound();
+    });
+    })();
+  </script>
+</body>
+</html>
