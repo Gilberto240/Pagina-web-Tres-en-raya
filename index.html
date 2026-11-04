@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171522">
   <title>El gatito — Tres en raya</title>
+  
+  <!-- Incluir el SDK cliente de Supabase desde CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     :root {
       color-scheme: dark;
@@ -178,7 +182,6 @@
     .cell.x { color: #bf4564; }
     .cell.o { color: #50a071; }
     .cell.winner { background: #c7e8b5; }
-    .cell:focus-visible, button:focus-visible { outline: 3px solid #d8b8ff; outline-offset: 3px; }
 
     .scoreboard {
       display: flex;
@@ -219,12 +222,6 @@
     .action:hover { background: #8b67b8; transform: translateY(-2px); }
     .action:active { transform: translateY(2px); box-shadow: 0 2px 0 #4d356d; }
 
-    .hint {
-      margin: 16px 0 0;
-      color: #b7afc5;
-      font-size: .95rem;
-    }
-
     @media (max-width: 420px) {
       body { padding: 16px; }
       .panel { padding: 18px 12px; }
@@ -233,16 +230,12 @@
       .scoreboard { gap: 6px; }
       .badge { min-width: 0; padding: 9px 10px; font-size: .92rem; }
     }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { transition-duration: .01ms !important; }
-    }
   </style>
 </head>
 <body>
   <main class="view" id="loginView">
     <h1>El gatito &infin;</h1>
-    <p class="intro">Inicia sesión o crea una cuenta para jugar.</p>
+    <p class="intro">Inicia sesión o crea una cuenta en Supabase.</p>
 
     <section class="panel" aria-label="Acceso al juego">
       <div class="tabs" role="group" aria-label="Tipo de acceso">
@@ -256,7 +249,7 @@
                  pattern="[A-Za-z0-9_]+" autocomplete="username" required>
         </label>
         <label class="field" for="password">Contraseña
-          <input id="password" name="password" type="password" minlength="8"
+          <input id="password" name="password" type="password" minlength="4"
                  autocomplete="current-password" required>
         </label>
         <button class="submit" id="submitButton" type="submit">Entrar y jugar</button>
@@ -264,7 +257,7 @@
       <p class="message" id="accountMessage" role="status" aria-live="polite"></p>
     </section>
 
-    <p class="note">Las cuentas se guardan únicamente en este navegador. No uses una contraseña que tengas en otros servicios.</p>
+    <p class="note">Las cuentas se sincronizan de forma segura con tu base de datos en Supabase.</p>
   </main>
 
   <main class="view" id="gameView">
@@ -302,6 +295,11 @@
   </main>
 
   <script>
+    // Configuración de Supabase
+    const SUPABASE_URL = "https://catvzgsqezotjyxgbdjd.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_Z1Ge44wdiAFVJj3KEcaDEQ_IPrDRbvN";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     const loginView = document.querySelector("#loginView");
     const gameView = document.querySelector("#gameView");
 
@@ -317,246 +315,217 @@
     }
 
     (() => {
-    const storageKey = "tilscale.users.v1";
-    const activeUserKey = "tilscale.activeUser";
-    const form = document.querySelector("#accountForm");
-    const usernameInput = document.querySelector("#username");
-    const passwordInput = document.querySelector("#password");
-    const accountMessage = document.querySelector("#accountMessage");
-    const loginTab = document.querySelector("#loginTab");
-    const registerTab = document.querySelector("#registerTab");
-    const submitButton = document.querySelector("#submitButton");
-    let mode = "login";
+      const activeUserKey = "tilscale.activeUser";
+      const form = document.querySelector("#accountForm");
+      const usernameInput = document.querySelector("#username");
+      const passwordInput = document.querySelector("#password");
+      const accountMessage = document.querySelector("#accountMessage");
+      const loginTab = document.querySelector("#loginTab");
+      const registerTab = document.querySelector("#registerTab");
+      const submitButton = document.querySelector("#submitButton");
+      let mode = "login";
 
-    try {
-      const activeUser = sessionStorage.getItem(activeUserKey);
-      if (activeUser) showGameView(activeUser);
-      else showLoginView();
-    } catch {
-      showLoginView();
-      showAccountMessage("No se pudo acceder al almacenamiento del navegador.", true);
-    }
-
-    function showAccountMessage(text, isError = false, isSuccess = false) {
-      accountMessage.textContent = text;
-      accountMessage.classList.toggle("error", isError);
-      accountMessage.classList.toggle("success", isSuccess);
-    }
-
-    function setMode(nextMode) {
-      mode = nextMode;
-      const isLogin = mode === "login";
-      loginTab.setAttribute("aria-pressed", String(isLogin));
-      registerTab.setAttribute("aria-pressed", String(!isLogin));
-      submitButton.textContent = isLogin ? "Entrar y jugar" : "Crear cuenta y jugar";
-      passwordInput.autocomplete = isLogin ? "current-password" : "new-password";
-      showAccountMessage("");
-    }
-
-    function readUsers() {
-      const storedUsers = localStorage.getItem(storageKey);
-      if (!storedUsers) return [];
-
-      const users = JSON.parse(storedUsers);
-      if (!Array.isArray(users) || users.some((user) =>
-        typeof user.username !== "string" ||
-        typeof user.salt !== "string" ||
-        typeof user.passwordHash !== "string"
-      )) {
-        throw new Error("Los datos de usuario guardados no tienen un formato válido.");
-      }
-      return users;
-    }
-
-    function toHex(bytes) {
-      return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    }
-
-    async function hashPassword(password, salt) {
-      const key = await crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(password),
-        "PBKDF2",
-        false,
-        ["deriveBits"]
-      );
-      const hash = await crypto.subtle.deriveBits(
-        { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
-        key,
-        256
-      );
-      return toHex(hash);
-    }
-
-    async function enterGame(username) {
       try {
-        sessionStorage.setItem(activeUserKey, username);
-        showGameView(username);
+        const activeUser = sessionStorage.getItem(activeUserKey);
+        if (activeUser) showGameView(activeUser);
+        else showLoginView();
       } catch {
-        showAccountMessage("No se pudo iniciar la sesión. Revisa los permisos de almacenamiento.", true);
+        showLoginView();
+        showAccountMessage("No se pudo acceder al almacenamiento del navegador.", true);
       }
-    }
 
-    loginTab.addEventListener("click", () => setMode("login"));
-    registerTab.addEventListener("click", () => setMode("register"));
+      function showAccountMessage(text, isError = false, isSuccess = false) {
+        accountMessage.textContent = text;
+        accountMessage.classList.toggle("error", isError);
+        accountMessage.classList.toggle("success", isSuccess);
+      }
 
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      showAccountMessage("");
-      submitButton.disabled = true;
+      function setMode(nextMode) {
+        mode = nextMode;
+        const isLogin = mode === "login";
+        loginTab.setAttribute("aria-pressed", String(isLogin));
+        registerTab.setAttribute("aria-pressed", String(!isLogin));
+        submitButton.textContent = isLogin ? "Entrar y jugar" : "Crear cuenta y jugar";
+        passwordInput.autocomplete = isLogin ? "current-password" : "new-password";
+        showAccountMessage("");
+      }
 
-      try {
-        if (!crypto.subtle) {
-          throw new Error("El navegador no permite proteger contraseñas en esta página. Ábrela desde localhost o una conexión segura.");
+      async function enterGame(username) {
+        try {
+          sessionStorage.setItem(activeUserKey, username);
+          showGameView(username);
+        } catch {
+          showAccountMessage("No se pudo iniciar la sesión.", true);
         }
+      }
+
+      loginTab.addEventListener("click", () => setMode("login"));
+      registerTab.addEventListener("click", () => setMode("register"));
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        showAccountMessage("");
+        submitButton.disabled = true;
 
         const username = usernameInput.value.trim();
-        const normalizedUsername = username.toLowerCase();
         const password = passwordInput.value;
-        const users = readUsers();
 
-        if (mode === "register") {
-          if (users.some((user) => user.username.toLowerCase() === normalizedUsername)) {
-            showAccountMessage("Ese nombre de usuario ya está registrado.", true);
+        try {
+          if (mode === "register") {
+            // Verificar si el usuario ya existe en Supabase
+            const { data: existingUser, error: searchError } = await supabaseClient
+              .from('Usuarios')
+              .select('*')
+              .eq('nombre', username)
+              .maybeSingle();
+
+            if (searchError) throw searchError;
+
+            if (existingUser) {
+              showAccountMessage("Ese nombre de usuario ya está registrado.", true);
+              return;
+            }
+
+            // Insertar el nuevo usuario en Supabase (asumiendo que id es autoincremental o se omite si es serial)
+            const { error: insertError } = await supabaseClient
+              .from('Usuarios')
+              .insert([{ nombre: username, contrasenia: password }]);
+
+            if (insertError) throw insertError;
+
+            showAccountMessage("¡Cuenta creada con éxito!", false, true);
+            await enterGame(username);
             return;
           }
 
-          const salt = crypto.getRandomValues(new Uint8Array(16));
-          const passwordHash = await hashPassword(password, salt);
-          users.push({ username, salt: toHex(salt), passwordHash });
-          localStorage.setItem(storageKey, JSON.stringify(users));
-          await enterGame(username);
-          return;
-        }
+          // Modo Login: Buscar el usuario y verificar la contraseña en Supabase
+          const { data: user, error: loginError } = await supabaseClient
+            .from('Usuarios')
+            .select('*')
+            .eq('nombre', username)
+            .maybeSingle();
 
-        const user = users.find((entry) => entry.username.toLowerCase() === normalizedUsername);
-        if (!user) {
-          showAccountMessage("Usuario o contraseña incorrectos.", true);
-          return;
-        }
+          if (loginError) throw loginError;
 
-        if (!/^[a-f\d]{32}$/i.test(user.salt) || !/^[a-f\d]{64}$/i.test(user.passwordHash)) {
-          throw new Error("Los datos de usuario guardados no tienen un formato válido.");
+          if (!user || user.contrasenia !== password) {
+            showAccountMessage("Usuario o contraseña incorrectos.", true);
+            return;
+          }
+
+          await enterGame(user.nombre);
+
+        } catch (error) {
+          console.error(error);
+          showAccountMessage("Ocurrió un error al conectar con la base de datos.", true);
+        } finally {
+          submitButton.disabled = false;
         }
-        const salt = Uint8Array.from(user.salt.match(/.{2}/g), (byte) => parseInt(byte, 16));
-        const passwordHash = await hashPassword(password, salt);
-        if (passwordHash !== user.passwordHash) {
-          showAccountMessage("Usuario o contraseña incorrectos.", true);
-          return;
-        }
-        await enterGame(user.username);
-      } catch (error) {
-        showAccountMessage(error instanceof Error
-          ? error.message
-          : "Ocurrió un error al acceder a la cuenta.", true);
-      } finally {
-        submitButton.disabled = false;
-      }
-    });
+      });
     })();
 
+    // Lógica del juego Tres en Raya
     (() => {
-    document.querySelector("#logout").addEventListener("click", () => {
-      sessionStorage.removeItem("tilscale.activeUser");
-      showLoginView();
-    });
-
-    const cells = Array.from(document.querySelectorAll(".cell"));
-    const message = document.querySelector("#message");
-    const scoreXDisplay = document.querySelector("#scoreX");
-    const scoreODisplay = document.querySelector("#scoreO");
-    const winningLines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8],
-      [0, 3, 6], [1, 4, 7], [2, 5, 8],
-      [0, 4, 8], [2, 4, 6]
-    ];
-
-    let board = Array(9).fill("");
-    let movesByPlayer = { X: [], O: [] };
-    let currentPlayer = "X";
-    let roundOver = false;
-    let scoreX = 0;
-    let scoreO = 0;
-
-    function updateScore() {
-      scoreXDisplay.textContent = scoreX;
-      scoreODisplay.textContent = scoreO;
-    }
-
-    function finishRound(winner, line) {
-      roundOver = true;
-      cells.forEach((cell) => { cell.disabled = true; });
-
-      line.forEach((index) => cells[index].classList.add("winner"));
-      if (winner === "X") scoreX += 1;
-      else scoreO += 1;
-      message.textContent = `¡Ganó ${winner}!`;
-
-      updateScore();
-    }
-
-    function play(index) {
-      if (roundOver || board[index]) return;
-
-      const playerMoves = movesByPlayer[currentPlayer];
-      let oldestMoveRemoved = false;
-      if (playerMoves.length === 3) {
-        const oldestIndex = playerMoves.shift();
-        board[oldestIndex] = "";
-        cells[oldestIndex].textContent = "";
-        cells[oldestIndex].classList.remove("x", "o", "winner");
-        cells[oldestIndex].disabled = false;
-        cells[oldestIndex].setAttribute(
-          "aria-label",
-          `Fila ${Math.floor(oldestIndex / 3) + 1}, columna ${oldestIndex % 3 + 1}, vacía`
-        );
-        oldestMoveRemoved = true;
-      }
-
-      board[index] = currentPlayer;
-      playerMoves.push(index);
-      const cell = cells[index];
-      cell.textContent = currentPlayer;
-      cell.classList.add(currentPlayer.toLowerCase());
-      cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, ${currentPlayer}`);
-      cell.disabled = true;
-
-      const winningLine = winningLines.find((line) => line.every((position) => board[position] === currentPlayer));
-      if (winningLine) {
-        finishRound(currentPlayer, winningLine);
-      } else {
-        currentPlayer = currentPlayer === "X" ? "O" : "X";
-        message.textContent = oldestMoveRemoved
-          ? `${currentPlayer === "X" ? "O" : "X"} colocó su cuarta ficha: desapareció la más antigua. Turno de ${currentPlayer}.`
-          : `Turno de ${currentPlayer}`;
-      }
-    }
-
-    function startNewRound() {
-      board = Array(9).fill("");
-      movesByPlayer = { X: [], O: [] };
-      currentPlayer = "X";
-      roundOver = false;
-      message.textContent = "Turno de X";
-      cells.forEach((cell, index) => {
-        cell.textContent = "";
-        cell.disabled = false;
-        cell.classList.remove("x", "o", "winner");
-        cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, vacía`);
+      document.querySelector("#logout").addEventListener("click", () => {
+        sessionStorage.removeItem("tilscale.activeUser");
+        showLoginView();
       });
-    }
 
-    cells.forEach((cell, index) => {
-      cell.addEventListener("click", () => play(index));
-    });
+      const cells = Array.from(document.querySelectorAll(".cell"));
+      const message = document.querySelector("#message");
+      const scoreXDisplay = document.querySelector("#scoreX");
+      const scoreODisplay = document.querySelector("#scoreO");
+      const winningLines = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],
+        [0, 4, 8], [2, 4, 6]
+      ];
 
-    document.querySelector("#newRound").addEventListener("click", startNewRound);
-    document.querySelector("#resetScore").addEventListener("click", () => {
-      scoreX = 0;
-      scoreO = 0;
-      updateScore();
-      startNewRound();
-    });
+      let board = Array(9).fill("");
+      let movesByPlayer = { X: [], O: [] };
+      let currentPlayer = "X";
+      let roundOver = false;
+      let scoreX = 0;
+      let scoreO = 0;
+
+      function updateScore() {
+        scoreXDisplay.textContent = scoreX;
+        scoreODisplay.textContent = scoreO;
+      }
+
+      function finishRound(winner, line) {
+        roundOver = true;
+        cells.forEach((cell) => { cell.disabled = true; });
+
+        line.forEach((index) => cells[index].classList.add("winner"));
+        if (winner === "X") scoreX += 1;
+        else scoreO += 1;
+        message.textContent = `¡Ganó ${winner}!`;
+
+        updateScore();
+      }
+
+      function play(index) {
+        if (roundOver || board[index]) return;
+
+        const playerMoves = movesByPlayer[currentPlayer];
+        let oldestMoveRemoved = false;
+        if (playerMoves.length === 3) {
+          const oldestIndex = playerMoves.shift();
+          board[oldestIndex] = "";
+          cells[oldestIndex].textContent = "";
+          cells[oldestIndex].classList.remove("x", "o", "winner");
+          cells[oldestIndex].disabled = false;
+          cells[oldestIndex].setAttribute(
+            "aria-label",
+            `Fila ${Math.floor(oldestIndex / 3) + 1}, columna ${oldestIndex % 3 + 1}, vacía`
+          );
+          oldestMoveRemoved = true;
+        }
+
+        board[index] = currentPlayer;
+        playerMoves.push(index);
+        const cell = cells[index];
+        cell.textContent = currentPlayer;
+        cell.classList.add(currentPlayer.toLowerCase());
+        cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, ${currentPlayer}`);
+        cell.disabled = true;
+
+        const winningLine = winningLines.find((line) => line.every((position) => board[position] === currentPlayer));
+        if (winningLine) {
+          finishRound(currentPlayer, winningLine);
+        } else {
+          currentPlayer = currentPlayer === "X" ? "O" : "X";
+          message.textContent = oldestMoveRemoved
+            ? `${currentPlayer === "X" ? "O" : "X"} colocó su cuarta ficha: desapareció la más antigua. Turno de ${currentPlayer}.`
+            : `Turno de ${currentPlayer}`;
+        }
+      }
+
+      function startNewRound() {
+        board = Array(9).fill("");
+        movesByPlayer = { X: [], O: [] };
+        currentPlayer = "X";
+        roundOver = false;
+        message.textContent = "Turno de X";
+        cells.forEach((cell, index) => {
+          cell.textContent = "";
+          cell.disabled = false;
+          cell.classList.remove("x", "o", "winner", "winning-line");
+          cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, vacía`);
+        });
+      }
+
+      cells.forEach((cell, index) => {
+        cell.addEventListener("click", () => play(index));
+      });
+
+      document.querySelector("#newRound").addEventListener("click", startNewRound);
+      document.querySelector("#resetScore").addEventListener("click", () => {
+        scoreX = 0;
+        scoreO = 0;
+        updateScore();
+        startNewRound();
+      });
     })();
   </script>
 </body>
