@@ -373,16 +373,19 @@
         try {
           if (mode === "register") {
             // Verificar si el usuario ya existe en Supabase
-            const { data: existingUser, error: searchError } = await supabaseClient
+            const { error: insertError } = await supabaseClient
+            .from('usuarios')
+            .insert([{ nombre: username, password: password }]);
+          
+            // Al iniciar sesión:
+            const { data: user, error: loginError } = await supabaseClient
               .from('usuarios')
               .select('*')
               .eq('nombre', username)
               .maybeSingle();
-
-            if (searchError) throw searchError;
-
-            if (existingUser) {
-              showAccountMessage("Ese nombre de usuario ya está registrado.", true);
+            
+            if (!user || user.password !== password) {
+              showAccountMessage("Usuario o contraseña incorrectos.", true);
               return;
             }
 
