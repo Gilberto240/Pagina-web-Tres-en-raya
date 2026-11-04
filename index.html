@@ -388,7 +388,7 @@
 
             // Insertar el nuevo usuario en Supabase (asumiendo que id es autoincremental o se omite si es serial)
             const { error: insertError } = await supabaseClient
-              .from('Usuarios')
+              .from('usuarios')
               .insert([{ nombre: username, contrasenia: password }]);
 
             if (insertError) throw insertError;
