@@ -374,7 +374,7 @@
           if (mode === "register") {
             // Verificar si el usuario ya existe en Supabase
             const { data: existingUser, error: searchError } = await supabaseClient
-              .from('Usuarios')
+              .from('usuarios')
               .select('*')
               .eq('nombre', username)
               .maybeSingle();
@@ -388,7 +388,7 @@
 
             // Insertar el nuevo usuario en Supabase (asumiendo que id es autoincremental o se omite si es serial)
             const { error: insertError } = await supabaseClient
-              .from('Usuarios')
+              .from('usuarios')
               .insert([{ nombre: username, contrasenia: password }]);
 
             if (insertError) throw insertError;
@@ -408,7 +408,7 @@
           if (loginError) throw loginError;
 
           if (!user || user.contrasenia !== password) {
-            showAccountMessage("Usuario o contraseña incorrectos.", true);
+            showAccountMessage("usuario o contraseña incorrectos.", true);
             return;
           }
 
