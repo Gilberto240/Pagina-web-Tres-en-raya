@@ -374,7 +374,7 @@
           if (mode === "register") {
             // Verificar si el usuario ya existe en Supabase
             const { data: existingUser, error: searchError } = await supabaseClient
-              .from('Usuarios')
+              .from('usuarios')
               .select('*')
               .eq('nombre', username)
               .maybeSingle();
