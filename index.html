@@ -373,16 +373,17 @@
         try {
           if (mode === "register") {
             // Verificar si el usuario ya existe en Supabase
-            const { error: insertError } = await supabaseClient
-            .from('usuarios')
+           // Al registrar
+          const { error: insertError } = await supabaseClient
+            .from('usuarios') // <-- Debe coincidir 100% con el nombre en Supabase
             .insert([{ nombre: username, password: password }]);
           
-            // Al iniciar sesión:
-            const { data: user, error: loginError } = await supabaseClient
-              .from('usuarios')
-              .select('*')
-              .eq('nombre', username)
-              .maybeSingle();
+          // Al iniciar sesión
+          const { data: user, error: loginError } = await supabaseClient
+            .from('usuarios') // <-- Debe coincidir 100% con el nombre en Supabase
+            .select('*')
+            .eq('nombre', username)
+            .maybeSingle();
             
             if (!user || user.password !== password) {
               showAccountMessage("Usuario o contraseña incorrectos.", true);
