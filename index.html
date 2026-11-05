@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171522">
   <title>El gatito — Tres en raya</title>
-  
-  <!-- Incluir el SDK cliente de Supabase desde CDN -->
+  <!-- SDK de Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     :root {
       color-scheme: dark;
@@ -235,7 +233,7 @@
 <body>
   <main class="view" id="loginView">
     <h1>El gatito &infin;</h1>
-    <p class="intro">Inicia sesión o crea una cuenta en Supabase.</p>
+    <p class="intro">Inicia sesión o crea una cuenta en Supabase para jugar.</p>
 
     <section class="panel" aria-label="Acceso al juego">
       <div class="tabs" role="group" aria-label="Tipo de acceso">
@@ -249,15 +247,13 @@
                  pattern="[A-Za-z0-9_]+" autocomplete="username" required>
         </label>
         <label class="field" for="password">Contraseña
-          <input id="password" name="password" type="password" minlength="4"
+          <input id="password" name="password" type="password" minlength="8"
                  autocomplete="current-password" required>
         </label>
         <button class="submit" id="submitButton" type="submit">Entrar y jugar</button>
       </form>
       <p class="message" id="accountMessage" role="status" aria-live="polite"></p>
     </section>
-
-    <p class="note">Si no tienes cunta inicia sesion.</p>
   </main>
 
   <main class="view" id="gameView">
@@ -297,8 +293,8 @@
   <script>
     // Configuración de Supabase
     const SUPABASE_URL = "https://catvzgsqezotjyxgbdjd.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_Z1Ge44wdiAFVJj3KEcaDEQ_IPrDRbvN";
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SUPABASE_KEY = "sb_publishable_Z1Ge44wdiAFVJj3KEcaDEQ_IPrDRbvN";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const loginView = document.querySelector("#loginView");
     const gameView = document.querySelector("#gameView");
@@ -331,7 +327,6 @@
         else showLoginView();
       } catch {
         showLoginView();
-        showAccountMessage("No se pudo acceder al almacenamiento del navegador.", true);
       }
 
       function showAccountMessage(text, isError = false, isSuccess = false) {
@@ -348,6 +343,26 @@
         submitButton.textContent = isLogin ? "Entrar y jugar" : "Crear cuenta y jugar";
         passwordInput.autocomplete = isLogin ? "current-password" : "new-password";
         showAccountMessage("");
+      }
+
+      function toHex(bytes) {
+        return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+
+      async function hashPassword(password, salt) {
+        const key = await crypto.subtle.importKey(
+          "raw",
+          new TextEncoder().encode(password),
+          "PBKDF2",
+          false,
+          ["deriveBits"]
+        );
+        const hash = await crypto.subtle.deriveBits(
+          { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
+          key,
+          256
+        );
+        return toHex(hash);
       }
 
       async function enterGame(username) {
@@ -367,63 +382,77 @@
         showAccountMessage("");
         submitButton.disabled = true;
 
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value;
-
         try {
+          const username = usernameInput.value.trim();
+          const password = passwordInput.value;
+
           if (mode === "register") {
             // Verificar si el usuario ya existe en Supabase
-            const { data: existingUser, error: searchError } = await supabaseClient
-              .from('usuarios')
-              .select('*')
-              .eq('nombre', username)
-              .maybeSingle();
+            const { data: existingUsers, error: searchError } = await supabase
+              .from('users')
+              .select('id')
+              .ilike('name', username);
 
             if (searchError) throw searchError;
 
-            if (existingUser) {
+            if (existingUsers && existingUsers.length > 0) {
               showAccountMessage("Ese nombre de usuario ya está registrado.", true);
               return;
             }
 
-            // Insertar el nuevo usuario en Supabase (asumiendo que id es autoincremental o se omite si es serial)
-            const { error: insertError } = await supabaseClient
-              .from('usuarios')
-              .insert([{ nombre: username, contrasenia: password }]);
+            // Generar hash seguro y almacenar en la tabla
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const passwordHash = await hashPassword(password, salt);
+            const storedValue = `${toHex(salt)}:${passwordHash}`;
+
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert([{ name: username, password: storedValue }]);
 
             if (insertError) throw insertError;
 
-            showAccountMessage("¡Cuenta creada con éxito!", false, true);
             await enterGame(username);
             return;
           }
 
-          // Modo Login: Buscar el usuario y verificar la contraseña en Supabase
-          const { data: user, error: loginError } = await supabaseClient
-            .from('usuarios')
+          // Iniciar sesión: Buscar usuario en Supabase
+          const { data: users, error: searchError } = await supabase
+            .from('users')
             .select('*')
-            .eq('nombre', username)
-            .maybeSingle();
+            .ilike('name', username);
 
-          if (loginError) throw loginError;
+          if (searchError) throw searchError;
 
-          if (!user || user.contrasenia !== password) {
-            showAccountMessage("usuario o contraseña incorrectos.", true);
+          if (!users || users.length === 0) {
+            showAccountMessage("Usuario o contraseña incorrectos.", true);
             return;
           }
 
-          await enterGame(user.nombre);
+          const user = users[0];
+          const [saltHex, storedHash] = user.password.split(':');
 
+          if (!saltHex || !storedHash) {
+            throw new Error("Formato de contraseña almacenada inválido.");
+          }
+
+          const salt = Uint8Array.from(saltHex.match(/.{2}/g), (byte) => parseInt(byte, 16));
+          const passwordHash = await hashPassword(password, salt);
+
+          if (passwordHash !== storedHash) {
+            showAccountMessage("Usuario o contraseña incorrectos.", true);
+            return;
+          }
+
+          await enterGame(user.name);
         } catch (error) {
-          console.error(error);
-          showAccountMessage("Ocurrió un error al conectar con la base de datos.", true);
+          showAccountMessage(error instanceof Error ? error.message : "Ocurrió un error al acceder a la cuenta.", true);
         } finally {
           submitButton.disabled = false;
         }
       });
     })();
 
-    // Lógica del juego Tres en Raya
+    // Lógica del juego Tres en raya
     (() => {
       document.querySelector("#logout").addEventListener("click", () => {
         sessionStorage.removeItem("tilscale.activeUser");
@@ -475,10 +504,6 @@
           cells[oldestIndex].textContent = "";
           cells[oldestIndex].classList.remove("x", "o", "winner");
           cells[oldestIndex].disabled = false;
-          cells[oldestIndex].setAttribute(
-            "aria-label",
-            `Fila ${Math.floor(oldestIndex / 3) + 1}, columna ${oldestIndex % 3 + 1}, vacía`
-          );
           oldestMoveRemoved = true;
         }
 
@@ -487,7 +512,6 @@
         const cell = cells[index];
         cell.textContent = currentPlayer;
         cell.classList.add(currentPlayer.toLowerCase());
-        cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, ${currentPlayer}`);
         cell.disabled = true;
 
         const winningLine = winningLines.find((line) => line.every((position) => board[position] === currentPlayer));
@@ -507,11 +531,10 @@
         currentPlayer = "X";
         roundOver = false;
         message.textContent = "Turno de X";
-        cells.forEach((cell, index) => {
+        cells.forEach((cell) => {
           cell.textContent = "";
           cell.disabled = false;
-          cell.classList.remove("x", "o", "winner", "winning-line");
-          cell.setAttribute("aria-label", `Fila ${Math.floor(index / 3) + 1}, columna ${index % 3 + 1}, vacía`);
+          cell.classList.remove("x", "o", "winner");
         });
       }
 
@@ -529,4 +552,5 @@
     })();
   </script>
 </body>
+</html>
 </html>
