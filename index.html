@@ -399,6 +399,15 @@
               showAccountMessage("Ese nombre de usuario ya está registrado.", true);
               return;
             }
+            const { error: insertError } = await supabase
+            .from('users')
+            .insert([{ name: username, password: password }]);
+          
+            if (insertError) throw insertError;
+          
+            await enterGame(username);
+            return;
+            }
 
             // Generar hash seguro y almacenar en la tabla
             const salt = crypto.getRandomValues(new Uint8Array(16));
